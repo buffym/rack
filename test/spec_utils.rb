@@ -427,6 +427,16 @@ describe Rack::Utils::Multipart do
       :input => StringIO.new(data) }
   end
 
+  def multipart_fixture_no_content_length(name)
+    file = multipart_file(name)
+    data = File.open(file, 'rb') { |io| io.read }
+
+    type = "multipart/form-data; boundary=AaB03x"
+
+    { "CONTENT_TYPE" => type,
+      :input => StringIO.new(data) }
+  end
+
   def multipart_file(name)
     File.join(File.dirname(__FILE__), "multipart", name.to_s)
   end
@@ -466,6 +476,25 @@ describe Rack::Utils::Multipart do
 
   should "parse multipart upload with binary file" do
     env = Rack::MockRequest.env_for("/", multipart_fixture(:binary))
+    params = Rack::Utils::Multipart.parse_multipart(env)
+    params["submit-name"].should.equal "Larry"
+    params["files"][:type].should.equal "image/png"
+    params["files"][:filename].should.equal "rack-logo.png"
+    params["files"][:head].should.equal "Content-Disposition: form-data; " +
+      "name=\"files\"; filename=\"rack-logo.png\"\r\n" +
+      "Content-Type: image/png\r\n"
+    params["files"][:name].should.equal "files"
+    params["files"][:tempfile].read.length.should.equal 26473
+  end
+
+  should "parse multipart upload with no content-length" do
+    file = multipart_file(:binary)
+    data = File.open(file, 'rb') { |io| io.read }
+    type = "multipart/form-data; boundary=AaB03x"
+    env = Rack::MockRequest.env_for("/", { "CONTENT_TYPE" => type, :input => StringIO.new(data) })
+    
+    #delete the content_length field, as it is automatically added in the MockRequest.env_for
+    env.delete("CONTENT_LENGTH")
     params = Rack::Utils::Multipart.parse_multipart(env)
     params["submit-name"].should.equal "Larry"
     params["files"][:type].should.equal "image/png"

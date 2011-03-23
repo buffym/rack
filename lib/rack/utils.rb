@@ -517,23 +517,27 @@ module Rack
 
           params = {}
           buf = ""
-          content_length = env['CONTENT_LENGTH'].to_i
           input = env['rack.input']
           input.rewind
 
           boundary_size = Utils.bytesize(boundary) + EOL.size
           bufsize = 16384
 
-          content_length -= boundary_size
 
           read_buffer = nil
 
           loop do
             read_buffer = input.gets
             break if read_buffer == boundary + EOL
+            break if read_buffer == nil
           end
 
+          raise EOFError, "bad content body"  unless read_buffer
+
           rx = /(?:#{EOL})?#{Regexp.quote boundary}(#{EOL}|--)/n
+
+
+          done = nil
 
           loop {
             head = nil
@@ -574,10 +578,9 @@ module Rack
                 body << buf.slice!(0, buf.size - (boundary_size+4))
               end
 
-              c = input.read(bufsize < content_length ? bufsize : content_length, read_buffer)
+              c = input.read(bufsize, read_buffer)
               raise EOFError, "bad content body"  if c.nil? || c.empty?
               buf << c
-              content_length -= c.size
             end
 
             # Save the rest.
@@ -585,7 +588,7 @@ module Rack
               body << buf.slice!(0, i)
               buf.slice!(0, boundary_size+2)
 
-              content_length = -1  if $1 == "--"
+              done = true if $1 == "--"
             end
 
             if filename == ""
@@ -615,7 +618,7 @@ module Rack
             Utils.normalize_params(params, name, data) unless data.nil?
 
             # break if we're at the end of a buffer, but not if it is the end of a field
-            break if (buf.empty? && $1 != EOL) || content_length == -1
+            break if (buf.empty? && $1 != EOL) || done
           }
 
           input.rewind
